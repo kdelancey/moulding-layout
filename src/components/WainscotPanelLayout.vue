@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { formatAsFraction } from '@/utils/measurements'
 
 const props = defineProps<{
@@ -48,7 +48,55 @@ const actualPanelHeight = computed(() => {
   return props.actualWallHeight / props.verticalPanelCount - props.actualRailHeight
 })
 
-// Generate outer frame (top and bottom rails, left and right stiles)
+// Lumber dimensions for labels with default values
+const lumberDimensions = ref({
+  topRail: "1×4",
+  bottomRail: "1×2",
+  stiles: "1×3",
+  panelMoulding: "3/4×3/4",
+  wainscotCap: "1×2",
+  shoeMoulding: "3/8×3/4"
+})
+
+// Dimension options for dropdown menus
+const dimensionOptions = {
+  rails: ["1×2", "1×4", "1×6", "1×8"],
+  stiles: ["1×2", "1×4", "1×6", "1×8"],
+  panelMoulding: ["3/4×3/4", "1/2×3/4", "3/4×1"],
+  wainscotCap: ["1×2"],
+  shoeMoulding: ["3/8×3/4", "3/4×3/4"]
+}
+
+// Parse dimension string to get the width/height value
+const getDimensionValue = (dimensionStr: string) => {
+  const parts = dimensionStr.split('×');
+  // Return the larger value (typically the second number)
+  return Math.max(parseFloat(parts[0]), parseFloat(parts[1]));
+}
+
+// Scale factors to convert from lumber dimensions to pixels
+const railHeightScale = computed(() => props.railHeight / getDimensionValue(lumberDimensions.value.bottomRail));
+const stileWidthScale = computed(() => props.stileWidth / getDimensionValue(lumberDimensions.value.stiles));
+
+// Function to update lumber dimensions
+const updateDimension = (component: keyof typeof lumberDimensions.value, dimension: string) => {
+  lumberDimensions.value[component] = dimension;
+}
+
+// Adjusted rail height based on selected dimension
+const topRailHeight = computed(() => {
+  return getDimensionValue(lumberDimensions.value.topRail) * railHeightScale.value;
+});
+
+const bottomRailHeight = computed(() => {
+  return getDimensionValue(lumberDimensions.value.bottomRail) * railHeightScale.value;
+});
+
+const stileWidth = computed(() => {
+  return getDimensionValue(lumberDimensions.value.stiles) * stileWidthScale.value;
+});
+
+// Generate outer frame with adjusted dimensions
 const outerFrame = computed(() => {
   return {
     // Top rail
@@ -56,44 +104,44 @@ const outerFrame = computed(() => {
       x: 0,
       y: 0,
       width: props.wainscotWidth,
-      height: props.railHeight
+      height: topRailHeight.value
     },
     // Bottom rail
     bottomRail: {
       x: 0,
-      y: props.wainscotHeight - props.railHeight,
+      y: props.wainscotHeight - bottomRailHeight.value,
       width: props.wainscotWidth,
-      height: props.railHeight
+      height: bottomRailHeight.value
     },
     // Left stile
     leftStile: {
       x: 0,
       y: 0,
-      width: props.stileWidth,
+      width: stileWidth.value,
       height: props.wainscotHeight
     },
     // Right stile
     rightStile: {
-      x: props.wainscotWidth - props.stileWidth,
+      x: props.wainscotWidth - stileWidth.value,
       y: 0,
-      width: props.stileWidth,
+      width: stileWidth.value,
       height: props.wainscotHeight
     }
   }
 })
 
-// Generate inner stiles (vertical dividers)
+// Generate inner stiles with adjusted width
 const innerStiles = computed(() => {
   const result = []
   
   // Add stiles at panel section boundaries (excluding the edges)
   for (let i = 1; i < props.horizontalPanelCount; i++) {
-    const xPosition = i * panelSectionWidth.value - props.stileWidth / 2
+    const xPosition = i * panelSectionWidth.value - stileWidth.value / 2
     
     result.push({
       x: xPosition,
       y: 0,
-      width: props.stileWidth,
+      width: stileWidth.value,
       height: props.wainscotHeight
     })
   }
@@ -101,40 +149,42 @@ const innerStiles = computed(() => {
   return result
 })
 
-// Generate inner rails (horizontal dividers)
+// Generate inner rails with adjusted height
 const innerRails = computed(() => {
   const result = []
   
   // Add rails at panel section boundaries (excluding the edges)
   for (let i = 1; i < props.verticalPanelCount; i++) {
-    const yPosition = i * panelSectionHeight.value - props.railHeight / 2
+    const yPosition = i * panelSectionHeight.value - bottomRailHeight.value / 2
     
     result.push({
       x: 0,
       y: yPosition,
       width: props.wainscotWidth,
-      height: props.railHeight
+      height: bottomRailHeight.value
     })
   }
   
   return result
 })
 
-// Generate panel areas (spaces between stiles and rails)
+// Generate panel areas with adjusted spacing for stiles and rails
 const panelAreas = computed(() => {
   const result = []
   
   for (let row = 0; row < props.verticalPanelCount; row++) {
     for (let col = 0; col < props.horizontalPanelCount; col++) {
       // Calculate the panel position
-      const panelX = col * panelSectionWidth.value + (col === 0 ? props.stileWidth : props.stileWidth / 2)
-      const panelY = row * panelSectionHeight.value + (row === 0 ? props.railHeight : props.railHeight / 2)
+      const panelX = col * panelSectionWidth.value + (col === 0 ? stileWidth.value : stileWidth.value / 2)
+      const panelY = row * panelSectionHeight.value + (row === 0 ? topRailHeight.value : bottomRailHeight.value / 2)
       
       // Calculate the panel size
       const panelWidth = panelSectionWidth.value - (col === 0 || col === props.horizontalPanelCount - 1 ? 
-                         props.stileWidth * 1.5 : props.stileWidth)
-      const panelHeight = panelSectionHeight.value - (row === 0 || row === props.verticalPanelCount - 1 ? 
-                          props.railHeight * 1.5 : props.railHeight)
+                         stileWidth.value * 1.5 : stileWidth.value)
+      const panelHeight = panelSectionHeight.value - (row === 0 ? 
+                          topRailHeight.value + bottomRailHeight.value / 2 : 
+                          (row === props.verticalPanelCount - 1 ? 
+                           bottomRailHeight.value * 1.5 : bottomRailHeight.value))
       
       result.push({
         x: panelX,
@@ -193,15 +243,6 @@ const measurementArrows = computed(() => {
     wallWidthArrow,
     wallHeightArrow,
     panelWidthArrow
-  }
-})
-
-// Lumber dimensions for labels
-const lumberDimensions = computed(() => {
-  return {
-    topRail: "1×4",
-    bottomRail: "1×2",
-    stiles: "1×3"
   }
 })
 
@@ -300,7 +341,16 @@ const formattedPanelHeight = computed(() => {
         height: `${outerFrame.topRail.height}px`
       }"
     >
-      <span class="lumber-dimension">{{ lumberDimensions.topRail }}</span>
+      <div class="dimension-menu">
+        <span class="lumber-dimension">{{ lumberDimensions.topRail }}</span>
+        <div class="dropdown-content">
+          <div v-for="option in dimensionOptions.rails" :key="option" 
+               @click="updateDimension('topRail', option)" 
+               class="dropdown-item">
+            {{ option }}
+          </div>
+        </div>
+      </div>
     </div>
     
     <!-- Bottom rail (1x2) -->
@@ -313,7 +363,16 @@ const formattedPanelHeight = computed(() => {
         height: `${outerFrame.bottomRail.height}px`
       }"
     >
-      <span class="lumber-dimension">{{ lumberDimensions.bottomRail }}</span>
+      <div class="dimension-menu">
+        <span class="lumber-dimension">{{ lumberDimensions.bottomRail }}</span>
+        <div class="dropdown-content">
+          <div v-for="option in dimensionOptions.rails" :key="option" 
+               @click="updateDimension('bottomRail', option)" 
+               class="dropdown-item">
+            {{ option }}
+          </div>
+        </div>
+      </div>
     </div>
     
     <!-- Left stile (1x3) -->
@@ -326,7 +385,16 @@ const formattedPanelHeight = computed(() => {
         height: `${outerFrame.leftStile.height}px`
       }"
     >
-      <span class="lumber-dimension">{{ lumberDimensions.stiles }}</span>
+      <div class="dimension-menu">
+        <span class="lumber-dimension">{{ lumberDimensions.stiles }}</span>
+        <div class="dropdown-content">
+          <div v-for="option in dimensionOptions.stiles" :key="option" 
+               @click="updateDimension('stiles', option)" 
+               class="dropdown-item">
+            {{ option }}
+          </div>
+        </div>
+      </div>
     </div>
     
     <!-- Right stile (1x3) -->
@@ -339,7 +407,16 @@ const formattedPanelHeight = computed(() => {
         height: `${outerFrame.rightStile.height}px`
       }"
     >
-      <span class="lumber-dimension">{{ lumberDimensions.stiles }}</span>
+      <div class="dimension-menu">
+        <span class="lumber-dimension">{{ lumberDimensions.stiles }}</span>
+        <div class="dropdown-content">
+          <div v-for="option in dimensionOptions.stiles" :key="option" 
+               @click="updateDimension('stiles', option)" 
+               class="dropdown-item">
+            {{ option }}
+          </div>
+        </div>
+      </div>
     </div>
     
     <!-- Inner stiles (1x3) -->
@@ -354,7 +431,16 @@ const formattedPanelHeight = computed(() => {
         height: `${stile.height}px`
       }"
     >
-      <span class="lumber-dimension">{{ lumberDimensions.stiles }}</span>
+      <div class="dimension-menu">
+        <span class="lumber-dimension">{{ lumberDimensions.stiles }}</span>
+        <div class="dropdown-content">
+          <div v-for="option in dimensionOptions.stiles" :key="option" 
+               @click="updateDimension('stiles', option)" 
+               class="dropdown-item">
+            {{ option }}
+          </div>
+        </div>
+      </div>
     </div>
     
     <!-- Inner rails -->
@@ -369,7 +455,16 @@ const formattedPanelHeight = computed(() => {
         height: `${rail.height}px`
       }"
     >
-      <span class="lumber-dimension">{{ lumberDimensions.bottomRail }}</span>
+      <div class="dimension-menu">
+        <span class="lumber-dimension">{{ lumberDimensions.bottomRail }}</span>
+        <div class="dropdown-content">
+          <div v-for="option in dimensionOptions.rails" :key="option" 
+               @click="updateDimension('bottomRail', option)" 
+               class="dropdown-item">
+            {{ option }}
+          </div>
+        </div>
+      </div>
     </div>
     
     <!-- Panel areas -->
@@ -387,6 +482,26 @@ const formattedPanelHeight = computed(() => {
       <!-- Panel measurements -->
       <div v-if="panel.row === 0 && panel.col === 0" class="panel-measurement">
         {{ formattedPanelWidth }} × {{ formattedPanelHeight }} {{ unitLabel }}
+        <div class="dimension-menu panel-options">
+          <span class="lumber-dimension">Options</span>
+          <div class="dropdown-content">
+            <div v-for="option in dimensionOptions.panelMoulding" :key="option" 
+                 @click="updateDimension('panelMoulding', option)" 
+                 class="dropdown-item">
+              Panel Moulding: {{ option }}
+            </div>
+            <div v-for="option in dimensionOptions.wainscotCap" :key="option" 
+                 @click="updateDimension('wainscotCap', option)" 
+                 class="dropdown-item">
+              Wainscot Cap: {{ option }}
+            </div>
+            <div v-for="option in dimensionOptions.shoeMoulding" :key="option" 
+                 @click="updateDimension('shoeMoulding', option)" 
+                 class="dropdown-item">
+              Shoe Moulding: {{ option }}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -463,19 +578,61 @@ const formattedPanelHeight = computed(() => {
   justify-content: center;
 }
 
+.dimension-menu {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+}
+
 .lumber-dimension {
   font-size: 10px;
   color: rgba(0, 0, 0, 0.87);
   background-color: rgba(255, 255, 255, 0.8);
-  padding: 2px;
+  padding: 2px 4px;
   border-radius: 2px;
+  cursor: pointer;
+}
+
+.lumber-dimension:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 100%;
+  background-color: white;
+  min-width: 120px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 10;
+  border-radius: 4px;
+}
+
+.dimension-menu:hover .dropdown-content {
+  display: block;
+}
+
+.dropdown-item {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.87);
+  cursor: pointer;
+}
+
+.dropdown-item:hover {
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 .panel-measurement {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.87);
-  background-color: rgba(255, 255, 255, 0.8);
-  padding: 2px 4px;
-  border-radius: 2px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-options {
+  margin-left: 8px;
 }
 </style> 
